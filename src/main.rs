@@ -1,7 +1,7 @@
 extern crate spring_dvs;
 use spring_dvs::enums::*;
 use spring_dvs::serialise::NetSerial;
-use spring_dvs::protocol::{Packet, FrameRegister};
+use spring_dvs::protocol::{Packet, PacketHeader, FrameRegister, FrameResponse};
 
 use std::env;
 use std::net::UdpSocket;
@@ -60,9 +60,20 @@ fn main() {
 	let m : &str = msg_target.as_ref();
 	
     match socket.send_to(bytes.as_ref(), m) {
-    	Ok(_) => println!("Sent"),
+    	Ok(_) => { },
     	_ => println!("Failed")
     };
+    
+    let mut bytes = [0;768];
+   	let (sz, from) = match socket.recv_from(&mut bytes) {
+		Ok(s) => s,
+		_ => { 
+			println!("Failed to recv response");
+			return; 
+		},
+	};
+   	
+   	decode_packet(&bytes[..sz])
 }
 
 fn forge_packet(t: DvspMsgType, c: &str) -> Vec<u8> {
@@ -78,4 +89,39 @@ fn forge_packet(t: DvspMsgType, c: &str) -> Vec<u8> {
 	p.write_content(&bytes);
 	
 	p.serialise()
+}
+
+
+fn decode_packet(bytes: &[u8]) {
+	let p : Packet = match Packet::deserialise(bytes) {
+		Ok(p) => p,
+		_ => { 
+			println!("Failed to deserialise packet");
+			return; 
+		}
+	};
+	println!("byte.len: {}", bytes.len());
+	println!("Packet.content.size: {}", p.header().msg_size);
+	
+	match p.header().msg_type {
+		DvspMsgType::GsnResponse => {
+
+			match p.content_as::<FrameResponse>() {
+				Ok(frame) => decode_frame_response(&frame),
+				Err(f) => {
+					println!("Failed to deserialise frame: {:?}", f);
+					return;
+				} 
+			}
+		},
+		
+		_ => {
+			println!("Unknown message type");
+			return
+		}
+	}
+}
+
+fn decode_frame_response(frame: &FrameResponse) {
+	println!("FrameResponse.code: {}", frame.code as u32);
 }
