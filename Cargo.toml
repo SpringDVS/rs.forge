@@ -1,0 +1,12 @@
+[package]
+
+name = "spring_forge"
+version = "0.0.1"
+authors = [ "Charlie Fyvie-Gauld <cfg@zunautica.org>" ]
+
+[[bin]]
+
+name = "hello_world"
+
+[dependencies.spring_dvs]
+path = "src/spring_dvs"
