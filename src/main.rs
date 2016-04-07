@@ -5,7 +5,7 @@ use std::io::{Write};
 use spring_dvs::enums::*;
 use spring_dvs::serialise::NetSerial;
 use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest};
-use spring_dvs::protocol::{FrameResponse, FrameNodeInfo, FrameNodeStatus};
+use spring_dvs::protocol::{FrameResponse, FrameNodeInfo, FrameNodeStatus, FrameNetwork};
 use spring_dvs::formats::ipv4_to_str_address;
 
 use std::env;
@@ -47,7 +47,9 @@ fn modify_msg_type(arg: &str ) -> DvspMsgType {
 		"gsn_response" => DvspMsgType::GsnResponse,
 		"gsn_state_update" => DvspMsgType::GsnState,
 		"gsn_node_status" => DvspMsgType::GsnNodeStatus,
-		
+
+		"gsn_area" => DvspMsgType::GsnArea,
+
 		"gsn_node_info" => DvspMsgType::GsnNodeInfo,
 		_ => DvspMsgType::Undefined
 	}
@@ -268,6 +270,17 @@ fn decode_packet(bytes: &[u8]) {
 			}
 		},
 		
+		DvspMsgType::GsnResponseNetwork => {
+
+			match p.content_as::<FrameNetwork>() {
+				Ok(frame) => decode_frame_network(&frame),
+				Err(f) => {
+					println!("Failed to deserialise FrameNetwork: {:?}", f);
+					return;
+				} 
+			}
+		},
+		
 		_ => {
 			println!("Unknown message type");
 			return
@@ -314,4 +327,16 @@ fn decode_frame_node_status(frame: &FrameNodeStatus) {
 	}
 	
 	println!("FrameNodeStatus.status: {:?}", frame.status);	
+}
+
+fn decode_frame_network(frame: &FrameNetwork) {
+	
+	
+	let nodelist = String::from_utf8_lossy(frame.list.as_ref());
+	let atoms : Vec<&str> = nodelist.split(';').collect();
+	println!("FrameNetwork.list:");
+	for s in atoms {
+		if s.len() == 0 { continue; }
+		println!("{};", s);
+	}
 }
