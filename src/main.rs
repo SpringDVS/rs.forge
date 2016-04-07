@@ -1,4 +1,7 @@
 extern crate spring_dvs;
+
+use std::io::{Write};
+
 use spring_dvs::enums::*;
 use spring_dvs::serialise::NetSerial;
 use spring_dvs::protocol::{Packet, PacketHeader, FrameRegister, FrameResponse};
@@ -81,6 +84,19 @@ enum ArgState {
 	NodeRegister, NodeType, NodeState, NodeService
 }
 
+
+fn print_packet(bytes: &[u8]) {
+	for i in 0..14 {
+		std::io::stdout().write(format!("{:0>2x} ", bytes[i]).as_ref()).unwrap();
+	}
+	if bytes.len() == 14 { return };
+	
+	std::io::stdout().write(format!("\n").as_ref()).unwrap();
+	for i in 14 .. bytes.len() {
+		std::io::stdout().write(format!("{:0>2x} ", bytes[i]).as_ref()).unwrap();
+	}
+}
+
 fn main() {
 	let mut cfg = config::new();
 	
@@ -122,7 +138,13 @@ fn main() {
 	}
 	
 	let bytes = forge_packet(&cfg);
-	println!("<< out.bytes.len: {}", bytes.len());
+	println!("<< out.bytes.len: {}\n", bytes.len());
+	
+	
+	println!("<< out.bytes:");
+	print_packet(bytes.as_ref());
+	println!("\n");
+
 	let socket = match UdpSocket::bind("0.0.0.0:55045") {
 		Ok(s) => s,
 		Err(e) => {
@@ -178,9 +200,17 @@ fn decode_packet(bytes: &[u8]) {
 		}
 	};
 	println!(">> in.bytes.len: {}", bytes.len());
-	println!(">> in.packet.msg_size: {}\n", p.header().msg_size);
+	println!(">> in.packet.msg_size: {}", p.header().msg_size);
 	println!(">> in.packet.msg_type: {:?}\n", p.header().msg_type);
 	
+	println!(">> in.bytes:");
+	if bytes.len() < Packet::lower_bound() {
+		println!("!! Error on byte len");
+		return;
+	}
+
+	print_packet(bytes);
+	println!("\n");
 	
 	match p.header().msg_type {
 		DvspMsgType::GsnResponse => {
