@@ -4,7 +4,9 @@ use std::io::{Write};
 
 use spring_dvs::enums::*;
 use spring_dvs::serialise::NetSerial;
-use spring_dvs::protocol::{Packet, PacketHeader, FrameRegister, FrameResponse, FrameStateUpdate, FrameNodeRequest};
+use spring_dvs::protocol::{Packet, PacketHeader, FrameRegister, FrameStateUpdate, FrameNodeRequest};
+use spring_dvs::protocol::{FrameResponse, FrameNodeInfo};
+use spring_dvs::formats::ipv4_to_str_address;
 
 use std::env;
 use std::net::UdpSocket;
@@ -232,7 +234,18 @@ fn decode_packet(bytes: &[u8]) {
 			match p.content_as::<FrameResponse>() {
 				Ok(frame) => decode_frame_response(&frame),
 				Err(f) => {
-					println!("Failed to deserialise frame: {:?}", f);
+					println!("Failed to deserialise FrameResponse: {:?}", f);
+					return;
+				} 
+			}
+		},
+		
+		DvspMsgType::GsnResponseNodeInfo => {
+
+			match p.content_as::<FrameNodeInfo>() {
+				Ok(frame) => decode_frame_node_info(&frame),
+				Err(f) => {
+					println!("Failed to deserialise FrameNodeInfo: {:?}", f);
 					return;
 				} 
 			}
@@ -246,5 +259,33 @@ fn decode_packet(bytes: &[u8]) {
 }
 
 fn decode_frame_response(frame: &FrameResponse) {
-	println!("FrameResponse.code: {}", frame.code as u32);
+	println!("FrameResponse.code: {:?}", frame.code);
+}
+
+fn decode_frame_node_info(frame: &FrameNodeInfo) {
+	if frame.code != DvspRcode::Ok {
+		println!("FrameNodeInfo.code: {:?}", frame.code as u32);
+		return;
+	}
+	//println!("FrameNodeInfo.type: {:}", frame.ntype);
+	std::io::stdout().write(format!("FrameNodeInfo.type: ").as_ref());
+	
+	if frame.ntype == DvspNodeType::Undefined as u8 {
+		std::io::stdout().write(format!("undefined").as_ref());
+	} else {
+		if frame.ntype & DvspNodeType::Org as u8 > 0 {
+			std::io::stdout().write(format!("org ").as_ref());
+		}
+		
+		if frame.ntype & DvspNodeType::Root as u8 > 0 {
+			std::io::stdout().write(format!("root ").as_ref());
+		}
+	}
+	
+	println!("");
+	
+	println!("FrameNodeInfo.service: {:?}", frame.service);
+	println!("FrameNodeInfo.address: {}", ipv4_to_str_address(&frame.address));
+	println!("FrameNodeInfo.name: {}", frame.name);
+	
 }
