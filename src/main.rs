@@ -4,14 +4,14 @@ use std::io::{Write};
 
 use spring_dvs::enums::*;
 use spring_dvs::serialise::NetSerial;
-use spring_dvs::protocol::{Packet, PacketHeader, FrameRegister, FrameStateUpdate, FrameNodeRequest};
+use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest};
 use spring_dvs::protocol::{FrameResponse, FrameNodeInfo, FrameNodeStatus};
 use spring_dvs::formats::ipv4_to_str_address;
 
 use std::env;
 use std::net::UdpSocket;
 
-struct config {
+struct Config {
 	msg_type: DvspMsgType,
 	msg_target: String,
 
@@ -24,9 +24,9 @@ struct config {
 	
 }
 
-impl config {
-	fn new() -> config {
-		config {
+impl Config {
+	fn new() -> Config {
+		Config {
 			msg_type: DvspMsgType::GsnRegistration,
 			msg_target: "127.0.0.1:55301".to_string(),
 			
@@ -104,7 +104,7 @@ fn print_packet(bytes: &[u8]) {
 }
 
 fn main() {
-	let mut cfg = config::new();
+	let mut cfg = Config::new();
 	
 	let mut state: ArgState = ArgState::None;
 	
@@ -179,7 +179,7 @@ fn main() {
    	println!("");
 }
 
-fn forge_packet(cfg: &config) -> Vec<u8> {
+fn forge_packet(cfg: &Config) -> Vec<u8> {
 	let bytes = match cfg.msg_type {
 		DvspMsgType::GsnRegistration => {
 			let f = FrameRegister::new(cfg.node_register, cfg.node_type as u8, cfg.node_service, cfg.text_content.clone());
@@ -286,16 +286,16 @@ fn decode_frame_node_info(frame: &FrameNodeInfo) {
 	}
 	//println!("FrameNodeInfo.type: {:}", frame.ntype);
 	
-	std::io::stdout().write(format!("FrameNodeInfo.type: ").as_ref());
+	std::io::stdout().write(format!("FrameNodeInfo.type: ").as_ref()).unwrap();
 	if frame.ntype == DvspNodeType::Undefined as u8 {
-		std::io::stdout().write(format!("undefined").as_ref());
+		std::io::stdout().write(format!("undefined").as_ref()).unwrap();
 	} else {
 		if frame.ntype & DvspNodeType::Org as u8 > 0 {
-			std::io::stdout().write(format!("org ").as_ref());
+			std::io::stdout().write(format!("org ").as_ref()).unwrap();
 		}
 		
 		if frame.ntype & DvspNodeType::Root as u8 > 0 {
-			std::io::stdout().write(format!("root ").as_ref());
+			std::io::stdout().write(format!("root ").as_ref()).unwrap();
 		}
 	}
 	
