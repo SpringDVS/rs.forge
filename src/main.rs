@@ -4,7 +4,7 @@ use std::io::{Write};
 
 use spring_dvs::enums::*;
 use spring_dvs::serialise::NetSerial;
-use spring_dvs::protocol::{Packet, PacketHeader, FrameRegister, FrameResponse};
+use spring_dvs::protocol::{Packet, PacketHeader, FrameRegister, FrameResponse, FrameStateUpdate};
 
 use std::env;
 use std::net::UdpSocket;
@@ -43,6 +43,7 @@ fn modify_msg_type(arg: &str ) -> DvspMsgType {
 	match arg {
 		"gsn_registration" => DvspMsgType::GsnRegistration,
 		"gsn_response" => DvspMsgType::GsnResponse,
+		"gsn_state_update" => DvspMsgType::GsnState,
 		_ => DvspMsgType::Undefined
 	}
 }
@@ -161,7 +162,7 @@ fn main() {
     };
     
     let mut bytes = [0;768];
-   	let (sz, from) = match socket.recv_from(&mut bytes) {
+   	let (sz, _) = match socket.recv_from(&mut bytes) {
 		Ok(s) => s,
 		_ => { 
 			println!("Failed to recv response");
@@ -179,11 +180,15 @@ fn forge_packet(cfg: &config) -> Vec<u8> {
 			let f = FrameRegister::new(cfg.node_register, cfg.node_type as u8, cfg.node_service, cfg.text_content.clone());
 			f.serialise()
 		},
+		DvspMsgType::GsnState => {
+			let f = FrameStateUpdate::new(cfg.node_state, &cfg.text_content);
+			f.serialise()
+		},
 		_ => { Vec::new() }
 	};
 	
 	let mut p = Packet::new(cfg.msg_type);
-	p.write_content(&bytes);
+	p.write_content(&bytes).unwrap();
 	
 	println!("<< out.packet.msg_size: {}", p.header().msg_size);
 	
