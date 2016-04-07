@@ -5,7 +5,7 @@ use std::io::{Write};
 use spring_dvs::enums::*;
 use spring_dvs::serialise::NetSerial;
 use spring_dvs::protocol::{Packet, PacketHeader, FrameRegister, FrameStateUpdate, FrameNodeRequest};
-use spring_dvs::protocol::{FrameResponse, FrameNodeInfo};
+use spring_dvs::protocol::{FrameResponse, FrameNodeInfo, FrameNodeStatus};
 use spring_dvs::formats::ipv4_to_str_address;
 
 use std::env;
@@ -46,6 +46,7 @@ fn modify_msg_type(arg: &str ) -> DvspMsgType {
 		"gsn_registration" => DvspMsgType::GsnRegistration,
 		"gsn_response" => DvspMsgType::GsnResponse,
 		"gsn_state_update" => DvspMsgType::GsnState,
+		"gsn_node_status" => DvspMsgType::GsnNodeStatus,
 		
 		"gsn_node_info" => DvspMsgType::GsnNodeInfo,
 		_ => DvspMsgType::Undefined
@@ -195,6 +196,11 @@ fn forge_packet(cfg: &config) -> Vec<u8> {
 			f.serialise()
 		},
 		
+		DvspMsgType::GsnNodeStatus => {
+			let f = FrameNodeRequest::new(&cfg.text_content);
+			f.serialise()
+		},
+		
 		_ => { Vec::new() }
 	};
 	
@@ -251,6 +257,17 @@ fn decode_packet(bytes: &[u8]) {
 			}
 		},
 		
+		DvspMsgType::GsnResponseStatus => {
+
+			match p.content_as::<FrameNodeStatus>() {
+				Ok(frame) => decode_frame_node_status(&frame),
+				Err(f) => {
+					println!("Failed to deserialise FrameNodeStatus: {:?}", f);
+					return;
+				} 
+			}
+		},
+		
 		_ => {
 			println!("Unknown message type");
 			return
@@ -268,8 +285,8 @@ fn decode_frame_node_info(frame: &FrameNodeInfo) {
 		return;
 	}
 	//println!("FrameNodeInfo.type: {:}", frame.ntype);
-	std::io::stdout().write(format!("FrameNodeInfo.type: ").as_ref());
 	
+	std::io::stdout().write(format!("FrameNodeInfo.type: ").as_ref());
 	if frame.ntype == DvspNodeType::Undefined as u8 {
 		std::io::stdout().write(format!("undefined").as_ref());
 	} else {
@@ -288,4 +305,13 @@ fn decode_frame_node_info(frame: &FrameNodeInfo) {
 	println!("FrameNodeInfo.address: {}", ipv4_to_str_address(&frame.address));
 	println!("FrameNodeInfo.name: {}", frame.name);
 	
+}
+
+fn decode_frame_node_status(frame: &FrameNodeStatus) {
+	if frame.code != DvspRcode::Ok {
+		println!("FrameNodeStatus.code: {:?}", frame.code as u32);
+		return;
+	}
+	
+	println!("FrameNodeStatus.status: {:?}", frame.status);	
 }
