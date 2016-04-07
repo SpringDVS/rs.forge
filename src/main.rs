@@ -4,7 +4,7 @@ use std::io::{Write};
 
 use spring_dvs::enums::*;
 use spring_dvs::serialise::NetSerial;
-use spring_dvs::protocol::{Packet, PacketHeader, FrameRegister, FrameResponse, FrameStateUpdate};
+use spring_dvs::protocol::{Packet, PacketHeader, FrameRegister, FrameResponse, FrameStateUpdate, FrameNodeRequest};
 
 use std::env;
 use std::net::UdpSocket;
@@ -44,6 +44,8 @@ fn modify_msg_type(arg: &str ) -> DvspMsgType {
 		"gsn_registration" => DvspMsgType::GsnRegistration,
 		"gsn_response" => DvspMsgType::GsnResponse,
 		"gsn_state_update" => DvspMsgType::GsnState,
+		
+		"gsn_node_info" => DvspMsgType::GsnNodeInfo,
 		_ => DvspMsgType::Undefined
 	}
 }
@@ -180,10 +182,17 @@ fn forge_packet(cfg: &config) -> Vec<u8> {
 			let f = FrameRegister::new(cfg.node_register, cfg.node_type as u8, cfg.node_service, cfg.text_content.clone());
 			f.serialise()
 		},
+		
 		DvspMsgType::GsnState => {
 			let f = FrameStateUpdate::new(cfg.node_state, &cfg.text_content);
 			f.serialise()
 		},
+		
+		DvspMsgType::GsnNodeInfo => {
+			let f = FrameNodeRequest::new(&cfg.text_content);
+			f.serialise()
+		},
+		
 		_ => { Vec::new() }
 	};
 	
