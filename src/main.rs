@@ -4,7 +4,7 @@ use std::io::{Write};
 
 use spring_dvs::enums::*;
 use spring_dvs::serialise::NetSerial;
-use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest};
+use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest, FrameTypeRequest};
 use spring_dvs::protocol::{FrameResponse, FrameNodeInfo, FrameNodeStatus, FrameNetwork};
 use spring_dvs::formats::ipv4_to_str_address;
 
@@ -48,6 +48,8 @@ fn modify_msg_type(arg: &str ) -> DvspMsgType {
 		"gsn_state_update" => DvspMsgType::GsnState,
 		"gsn_node_status" => DvspMsgType::GsnNodeStatus,
 
+		"gsn_type_request" => DvspMsgType::GsnTypeRequest,
+		
 		"gsn_area" => DvspMsgType::GsnArea,
 
 		"gsn_node_info" => DvspMsgType::GsnNodeInfo,
@@ -65,7 +67,7 @@ fn modify_node_register(arg: &str) -> bool {
 fn modify_node_type(arg: &str) -> DvspNodeType {
 	match arg {
 		"org" => DvspNodeType::Org,
-		"root" => DvspNodeType::Org,
+		"root" => DvspNodeType::Root,
 		_ => DvspNodeType::Undefined,
 	}
 }
@@ -200,6 +202,11 @@ fn forge_packet(cfg: &Config) -> Vec<u8> {
 		
 		DvspMsgType::GsnNodeStatus => {
 			let f = FrameNodeRequest::new(&cfg.text_content);
+			f.serialise()
+		},
+
+		DvspMsgType::GsnTypeRequest => {
+			let f = FrameTypeRequest::new(cfg.node_type as u8);
 			f.serialise()
 		},
 		
