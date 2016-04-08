@@ -22,6 +22,8 @@ struct Config {
 	
 	text_content: String,
 	
+	unit_test: bool,
+	
 }
 
 impl Config {
@@ -36,6 +38,8 @@ impl Config {
 			node_service: DvspService::Dvsp,
 			
 			text_content: String::new(),
+			
+			unit_test: false,
 		}
 	}
 }
@@ -126,6 +130,7 @@ fn main() {
 			"--node-state" => { state = ArgState::NodeState; },
 			
 			"--text-content" => { state = ArgState::TextContent; },
+			"--unit-test" => { cfg.unit_test = true },
 			
 			_ => {
 				
@@ -148,17 +153,21 @@ fn main() {
 	}
 	
 	let bytes = forge_packet(&cfg);
-	println!("<< out.bytes.len: {}\n", bytes.len());
+	
+	if !cfg.unit_test {
+		println!("<< out.bytes.len: {}\n", bytes.len());
+		println!("<< out.bytes:");
+		print_packet(bytes.as_ref());
+		println!("\n");
+	}
 	
 	
-	println!("<< out.bytes:");
-	print_packet(bytes.as_ref());
-	println!("\n");
-
+	
+	
 	let socket = match UdpSocket::bind("0.0.0.0:55045") {
 		Ok(s) => s,
 		Err(e) => {
-			println!("Error on bind: {}",e);
+			println!("!! Error on bind: {}",e);
 			return;
 		}
 	};
@@ -167,19 +176,19 @@ fn main() {
 	
     match socket.send_to(bytes.as_ref(), m) {
     	Ok(_) => { },
-    	_ => println!("Failed")
+    	_ => println!("!! Failed")
     };
     
     let mut bytes = [0;768];
    	let (sz, _) = match socket.recv_from(&mut bytes) {
 		Ok(s) => s,
 		_ => { 
-			println!("Failed to recv response");
+			println!("!! Failed to recv response");
 			return; 
 		},
 	};
    	
-   	decode_packet(&bytes[..sz]);
+   	decode_packet(&bytes[..sz], &cfg);
    	println!("");
 }
 
@@ -216,40 +225,49 @@ fn forge_packet(cfg: &Config) -> Vec<u8> {
 	let mut p = Packet::new(cfg.msg_type);
 	p.write_content(&bytes).unwrap();
 	
-	println!("<< out.packet.msg_size: {}", p.header().msg_size);
+	if !cfg.unit_test {
+		println!("<< out.packet.msg_size: {}", p.header().msg_size);
+	}
 	
 	p.serialise()
 }
 
 
-fn decode_packet(bytes: &[u8]) {
+fn decode_packet(bytes: &[u8], cfg: &Config) {
 	let p : Packet = match Packet::deserialise(bytes) {
 		Ok(p) => p,
 		_ => { 
-			println!("Failed to deserialise packet");
+			if !cfg.unit_test {
+				println!("Failed to deserialise packet");
+			} else {
+				println!("## deserialise|Packet");
+			}
 			return; 
 		}
 	};
-	println!(">> in.bytes.len: {}", bytes.len());
-	println!(">> in.packet.msg_size: {}", p.header().msg_size);
-	println!(">> in.packet.msg_type: {:?}\n", p.header().msg_type);
 	
-	println!(">> in.bytes:");
-	if bytes.len() < Packet::lower_bound() {
-		println!("!! Error on byte len");
-		return;
+	if !cfg.unit_test {
+		println!(">> in.bytes.len: {}", bytes.len());
+		println!(">> in.packet.msg_size: {}", p.header().msg_size);
+		println!(">> in.packet.msg_type: {:?}\n", p.header().msg_type);
+		
+		println!(">> in.bytes:");
+		if bytes.len() < Packet::lower_bound() {
+			println!("!! Error on byte len");
+			return;
+		}
+	
+		print_packet(bytes);
+		println!("\n");
 	}
-
-	print_packet(bytes);
-	println!("\n");
 	
 	match p.header().msg_type {
 		DvspMsgType::GsnResponse => {
 
 			match p.content_as::<FrameResponse>() {
-				Ok(frame) => decode_frame_response(&frame),
+				Ok(frame) => decode_frame_response(&frame, &cfg),
 				Err(f) => {
-					println!("Failed to deserialise FrameResponse: {:?}", f);
+					println!("!! deserialise|FrameResponse:{:?}", f); 
 					return;
 				} 
 			}
@@ -258,9 +276,9 @@ fn decode_packet(bytes: &[u8]) {
 		DvspMsgType::GsnResponseNodeInfo => {
 
 			match p.content_as::<FrameNodeInfo>() {
-				Ok(frame) => decode_frame_node_info(&frame),
+				Ok(frame) => decode_frame_node_info(&frame, &cfg),
 				Err(f) => {
-					println!("Failed to deserialise FrameNodeInfo: {:?}", f);
+					println!("!! deserialise|FrameNodeInfo:{:?}", f);
 					return;
 				} 
 			}
@@ -269,9 +287,9 @@ fn decode_packet(bytes: &[u8]) {
 		DvspMsgType::GsnResponseStatus => {
 
 			match p.content_as::<FrameNodeStatus>() {
-				Ok(frame) => decode_frame_node_status(&frame),
+				Ok(frame) => decode_frame_node_status(&frame, &cfg),
 				Err(f) => {
-					println!("Failed to deserialise FrameNodeStatus: {:?}", f);
+					println!("!! deserialise|FrameNodeStatus:{:?}", f);
 					return;
 				} 
 			}
@@ -280,70 +298,104 @@ fn decode_packet(bytes: &[u8]) {
 		DvspMsgType::GsnResponseNetwork => {
 
 			match p.content_as::<FrameNetwork>() {
-				Ok(frame) => decode_frame_network(&frame),
+				Ok(frame) => decode_frame_network(&frame, &cfg),
 				Err(f) => {
-					println!("Failed to deserialise FrameNetwork: {:?}", f);
+					println!("!! deserialise|FrameNetwork:{:?}", f);
 					return;
 				} 
 			}
 		},
 		
 		_ => {
-			println!("Unknown message type");
+			println!("!! unknown_message");
 			return
 		}
 	}
 }
 
-fn decode_frame_response(frame: &FrameResponse) {
-	println!("FrameResponse.code: {:?}", frame.code);
+fn decode_frame_response(frame: &FrameResponse, cfg: &Config) {
+	if !cfg.unit_test {
+		println!("FrameResponse.code: {:?}", frame.code);
+	} else {
+		println!("%% response|FrameResponse:{:?}", frame.code);
+	}
 }
 
-fn decode_frame_node_info(frame: &FrameNodeInfo) {
-	if frame.code != DvspRcode::Ok {
-		println!("FrameNodeInfo.code: {:?}", frame.code as u32);
-		return;
-	}
-	//println!("FrameNodeInfo.type: {:}", frame.ntype);
+fn decode_frame_node_info(frame: &FrameNodeInfo, cfg: &Config) {
 	
-	std::io::stdout().write(format!("FrameNodeInfo.type: ").as_ref()).unwrap();
-	if frame.ntype == DvspNodeType::Undefined as u8 {
-		std::io::stdout().write(format!("undefined").as_ref()).unwrap();
-	} else {
-		if frame.ntype & DvspNodeType::Org as u8 > 0 {
-			std::io::stdout().write(format!("org ").as_ref()).unwrap();
+	if frame.code != DvspRcode::Ok {
+
+		if !cfg.unit_test {
+			println!("FrameNodeInfo.code: {:?}", frame.code as u32);
+		} else {
+			println!("%% response|FrameNodeInfo:{:?}", frame.code as u32);
+		}
+		return;
+
+	}
+	
+	if !cfg.unit_test {
+
+		std::io::stdout().write(format!("FrameNodeInfo.type: ").as_ref()).unwrap();
+		if frame.ntype == DvspNodeType::Undefined as u8 {
+			std::io::stdout().write(format!("undefined").as_ref()).unwrap();
+		} else {
+			if frame.ntype & DvspNodeType::Org as u8 > 0 {
+				std::io::stdout().write(format!("org ").as_ref()).unwrap();
+			}
+			
+			if frame.ntype & DvspNodeType::Root as u8 > 0 {
+				std::io::stdout().write(format!("root ").as_ref()).unwrap();
+			}
 		}
 		
-		if frame.ntype & DvspNodeType::Root as u8 > 0 {
-			std::io::stdout().write(format!("root ").as_ref()).unwrap();
-		}
+		println!("");
+		
+		println!("FrameNodeInfo.service: {:?}", frame.service);
+		println!("FrameNodeInfo.address: {}", ipv4_to_str_address(&frame.address));
+		println!("FrameNodeInfo.name: {}", frame.name);
+
+	} else {
+		println!("%% response|FrameNodeInfo:{};{:?};{};{}", frame.ntype, frame.service, ipv4_to_str_address(&frame.address), frame.name);
 	}
-	
-	println!("");
-	
-	println!("FrameNodeInfo.service: {:?}", frame.service);
-	println!("FrameNodeInfo.address: {}", ipv4_to_str_address(&frame.address));
-	println!("FrameNodeInfo.name: {}", frame.name);
 	
 }
 
-fn decode_frame_node_status(frame: &FrameNodeStatus) {
+fn decode_frame_node_status(frame: &FrameNodeStatus, cfg: &Config) {
+	
+	
 	if frame.code != DvspRcode::Ok {
-		println!("FrameNodeStatus.code: {:?}", frame.code as u32);
+		if !cfg.unit_test  {
+			println!("FrameNodeStatus.code: {:?}", frame.code);
+		} else {
+			println!("%% response|FrameNodeStatus:{:?}", frame.code);
+		}
 		return;
 	}
 	
-	println!("FrameNodeStatus.status: {:?}", frame.status);	
+	if !cfg.unit_test {
+		println!("FrameNodeStatus.status: {:?}", frame.status);
+	} else {
+		println!("%% response|FrameNodeStatus:{:?}", frame.status);
+	}
 }
 
-fn decode_frame_network(frame: &FrameNetwork) {
+fn decode_frame_network(frame: &FrameNetwork, cfg: &Config) {
 	
 	
 	let nodelist = String::from_utf8_lossy(frame.list.as_ref());
-	let atoms : Vec<&str> = nodelist.split(';').collect();
-	println!("FrameNetwork.list:");
-	for s in atoms {
-		if s.len() == 0 { continue; }
-		println!("{};", s);
+	
+	if !cfg.unit_test {
+		println!("FrameNetwork.list:");
+		
+		let atoms : Vec<&str> = nodelist.split(';').collect();
+		for s in atoms {
+			if s.len() == 0 { continue; }
+			println!("{};", s);
+		}
+		
+	} else {
+		println!("%% response|FrameNetwork:{}", nodelist);
 	}
+
 }
