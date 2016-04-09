@@ -319,7 +319,7 @@ fn decode_frame_response(frame: &FrameResponse, cfg: &Config) {
 	if !cfg.unit_test {
 		println!("FrameResponse.code: {:?}", frame.code);
 	} else {
-		println!("%% response|FrameResponse:{:?}", frame.code);
+		println!("%% Response|FrameResponse:{:?}", frame.code);
 	}
 }
 
@@ -330,7 +330,7 @@ fn decode_frame_node_info(frame: &FrameNodeInfo, cfg: &Config) {
 		if !cfg.unit_test {
 			println!("FrameNodeInfo.code: {:?}", frame.code as u32);
 		} else {
-			println!("%% response|FrameNodeInfo:{:?}", frame.code as u32);
+			println!("%% Response|FrameNodeInfo:{:?}", frame.code as u32);
 		}
 		return;
 
@@ -358,7 +358,7 @@ fn decode_frame_node_info(frame: &FrameNodeInfo, cfg: &Config) {
 		println!("FrameNodeInfo.name: {}", frame.name);
 
 	} else {
-		println!("%% response|FrameNodeInfo:{};{:?};{};{}", frame.ntype, frame.service, ipv4_to_str_address(&frame.address), frame.name);
+		println!("%% Response|FrameNodeInfo:{};{:?};{};{}", frame.ntype, frame.service, ipv4_to_str_address(&frame.address), frame.name);
 	}
 	
 }
@@ -370,7 +370,7 @@ fn decode_frame_node_status(frame: &FrameNodeStatus, cfg: &Config) {
 		if !cfg.unit_test  {
 			println!("FrameNodeStatus.code: {:?}", frame.code);
 		} else {
-			println!("%% response|FrameNodeStatus:{:?}", frame.code);
+			println!("%% Response|FrameNodeStatus:{:?}", frame.code);
 		}
 		return;
 	}
@@ -378,7 +378,7 @@ fn decode_frame_node_status(frame: &FrameNodeStatus, cfg: &Config) {
 	if !cfg.unit_test {
 		println!("FrameNodeStatus.status: {:?}", frame.status);
 	} else {
-		println!("%% response|FrameNodeStatus:{:?}", frame.status);
+		println!("%% Response|FrameNodeStatus:{:?}", frame.status);
 	}
 }
 
@@ -397,7 +397,7 @@ fn decode_frame_network(frame: &FrameNetwork, cfg: &Config) {
 		}
 		
 	} else {
-		println!("%% response|FrameNetwork:{}", nodelist);
+		println!("%% Response|FrameNetwork:{}", nodelist);
 	}
 
 }
