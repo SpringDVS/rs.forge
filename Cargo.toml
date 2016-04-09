@@ -6,7 +6,7 @@ authors = [ "Charlie Fyvie-Gauld <cfg@zunautica.org>" ]
 
 [[bin]]
 
-name = "hello_world"
+name = "forge"
 
 [dependencies.spring_dvs]
 path = "src/spring_dvs"

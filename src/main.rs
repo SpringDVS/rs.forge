@@ -132,6 +132,8 @@ fn main() {
 			"--text-content" => { state = ArgState::TextContent; },
 			"--unit-test" => { cfg.unit_test = true },
 			
+			"--version" => { println!("SpringDVS Packet Forge v0.1"); return; }
+			
 			_ => {
 				
 				match state {
