@@ -4,7 +4,7 @@ use std::io::{Write};
 
 use spring_dvs::enums::*;
 use spring_dvs::serialise::NetSerial;
-use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest, FrameTypeRequest};
+use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest, FrameTypeRequest, FrameUnitTest};
 use spring_dvs::protocol::{FrameResponse, FrameNodeInfo, FrameNodeStatus, FrameNetwork};
 use spring_dvs::formats::ipv4_to_str_address;
 
@@ -22,6 +22,7 @@ struct Config {
 	
 	text_content: String,
 	
+	test_action: UnitTestAction,
 	unit_test: bool,
 	
 }
@@ -39,6 +40,7 @@ impl Config {
 			
 			text_content: String::new(),
 			
+			test_action: UnitTestAction::Undefined,
 			unit_test: false,
 		}
 	}
@@ -57,6 +59,8 @@ fn modify_msg_type(arg: &str ) -> DvspMsgType {
 		"gsn_area" => DvspMsgType::GsnArea,
 
 		"gsn_node_info" => DvspMsgType::GsnNodeInfo,
+		
+		"gsn_unit_test" => DvspMsgType::UnitTest,
 		_ => DvspMsgType::Undefined
 	}
 }
@@ -93,9 +97,17 @@ fn modify_node_service(arg: &str) -> DvspService {
 	}
 }
 
+fn modify_test_action(arg: &str) -> UnitTestAction {
+	match arg {
+		"reset" => UnitTestAction::Reset,
+		_ => UnitTestAction::Undefined,
+	}
+}
+
 enum ArgState {
 	None, MsgType, TextContent, MsgTarget, 
-	NodeRegister, NodeType, NodeState, NodeService
+	NodeRegister, NodeType, NodeState, NodeService,
+	TestAction,
 }
 
 
@@ -130,6 +142,8 @@ fn main() {
 			"--node-state" => { state = ArgState::NodeState; },
 			
 			"--text-content" => { state = ArgState::TextContent; },
+			
+			"--test-action" => { state = ArgState::TestAction; },
 			"--unit-test" => { cfg.unit_test = true },
 			
 			"--version" => { println!("SpringDVS Packet Forge v0.1"); return; }
@@ -145,6 +159,8 @@ fn main() {
 					ArgState::NodeService => { cfg.node_service = modify_node_service(a.as_ref()); },
 					ArgState::NodeType => { cfg.node_type = modify_node_type(a.as_ref()); },
 					ArgState::NodeState => { cfg.node_state = modify_node_state(a.as_ref()); },
+					
+					ArgState::TestAction => { cfg.test_action = modify_test_action(a.as_ref()); },
 					_ => { }
 				};
 				
@@ -221,6 +237,10 @@ fn forge_packet(cfg: &Config) -> Vec<u8> {
 			f.serialise()
 		},
 		
+		DvspMsgType::UnitTest => {
+			let f = FrameUnitTest::new(cfg.test_action);
+			f.serialise()
+		},
 		_ => { Vec::new() }
 	};
 	
