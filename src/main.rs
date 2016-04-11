@@ -1,6 +1,9 @@
 extern crate spring_dvs;
+extern crate rand;
 
 use std::io::{Write};
+
+use rand::Rng;
 
 use spring_dvs::enums::*;
 use spring_dvs::serialise::NetSerial;
@@ -25,6 +28,9 @@ struct Config {
 	test_action: UnitTestAction,
 	unit_test: bool,
 	
+	fuzzy: bool,
+	fuzzy_loop: u32,
+	
 }
 
 impl Config {
@@ -42,6 +48,8 @@ impl Config {
 			
 			test_action: UnitTestAction::Undefined,
 			unit_test: false,
+			fuzzy: false,
+			fuzzy_loop: 1,
 		}
 	}
 }
@@ -108,7 +116,7 @@ fn modify_test_action(arg: &str) -> UnitTestAction {
 enum ArgState {
 	None, MsgType, TextContent, MsgTarget, 
 	NodeRegister, NodeType, NodeState, NodeService,
-	TestAction,
+	TestAction, FuzzyLoop,
 }
 
 
@@ -146,6 +154,8 @@ fn main() {
 			
 			"--test-action" => { state = ArgState::TestAction; },
 			"--unit-test" => { cfg.unit_test = true },
+			"--fuzzy" => { cfg.fuzzy = true; cfg.unit_test = true },
+			"--fuzzy-loop" => { state = ArgState::FuzzyLoop },
 			
 			"--version" => { println!("SpringDVS Packet Forge v0.1"); return; }
 			
@@ -162,6 +172,12 @@ fn main() {
 					ArgState::NodeState => { cfg.node_state = modify_node_state(a.as_ref()); },
 					
 					ArgState::TestAction => { cfg.test_action = modify_test_action(a.as_ref()); },
+					ArgState::FuzzyLoop => { cfg.fuzzy_loop = match a.parse::<u32>() {
+													Ok(n) => n,
+													_ => 1
+												}
+										
+							 				},
 					_ => { }
 				};
 				
@@ -171,44 +187,68 @@ fn main() {
 		
 	}
 	
-	let bytes = forge_packet(&cfg);
+
+	for _ in 0 .. cfg.fuzzy_loop {
+		
+		let bytes = match cfg.fuzzy {
+			true  => forge_fuzzy_packet(&cfg),
+			false => forge_packet(&cfg),
+		};
+
+		if !cfg.unit_test {
+			println!("<< out.bytes.len: {}\n", bytes.len());
+			println!("<< out.bytes:");
+			print_packet(bytes.as_ref());
+			println!("\n");
+		}
+		
+		
+		
+		
+		let socket = match UdpSocket::bind("0.0.0.0:55045") {
+			Ok(s) => s,
+			Err(e) => {
+				println!("!! Error on bind: {}",e);
+				return;
+			}
+		};
+		
+		let m : &str = cfg.msg_target.as_ref();
+		
+	    match socket.send_to(bytes.as_ref(), m) {
+	    	Ok(_) => { },
+	    	_ => println!("!! Failed")
+	    };
+	    
+	    let mut bytes = [0;768];
+	   	let (sz, _) = match socket.recv_from(&mut bytes) {
+			Ok(s) => s,
+			_ => { 
+				println!("!! Failed to recv response");
+				return; 
+			},
+		};
+	   	
+	   	decode_packet(&bytes[..sz], &cfg);
+	   	println!("");
+	   	if cfg.fuzzy == false { break }
+	}
+}
+
+#[allow(unused_variables)]
+fn forge_fuzzy_packet(cfg: &Config) -> Vec<u8> {
+	let mut rng = rand::thread_rng();
+	let sz = rng.gen::<usize>() % 2048;
+	println!("Fuzzing: {} bytes", sz);
 	
-	if !cfg.unit_test {
-		println!("<< out.bytes.len: {}\n", bytes.len());
-		println!("<< out.bytes:");
-		print_packet(bytes.as_ref());
-		println!("\n");
+	
+	let mut v : Vec<u8> = Vec::new();
+	for i in 0 .. sz {
+		v.push(rng.gen::<u8>())
 	}
 	
-	
-	
-	
-	let socket = match UdpSocket::bind("0.0.0.0:55045") {
-		Ok(s) => s,
-		Err(e) => {
-			println!("!! Error on bind: {}",e);
-			return;
-		}
-	};
-	
-	let m : &str = cfg.msg_target.as_ref();
-	
-    match socket.send_to(bytes.as_ref(), m) {
-    	Ok(_) => { },
-    	_ => println!("!! Failed")
-    };
-    
-    let mut bytes = [0;768];
-   	let (sz, _) = match socket.recv_from(&mut bytes) {
-		Ok(s) => s,
-		_ => { 
-			println!("!! Failed to recv response");
-			return; 
-		},
-	};
-   	
-   	decode_packet(&bytes[..sz], &cfg);
-   	println!("");
+	println!("{:?}", v); 
+	v
 }
 
 fn forge_packet(cfg: &Config) -> Vec<u8> {

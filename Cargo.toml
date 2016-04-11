@@ -10,3 +10,6 @@ name = "forge"
 
 [dependencies.spring_dvs]
 path = "src/spring_dvs"
+
+[dependencies]
+rand = "0.3"
