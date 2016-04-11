@@ -6,7 +6,8 @@ use std::io::{Write};
 use rand::Rng;
 
 use spring_dvs::enums::*;
-use spring_dvs::serialise::NetSerial;
+use spring_dvs::serialise::*;
+use spring_dvs::protocol::{u8_packet_type};
 use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest, FrameTypeRequest, FrameUnitTest};
 use spring_dvs::protocol::{FrameResponse, FrameNodeInfo, FrameNodeStatus, FrameNetwork};
 use spring_dvs::formats::ipv4_to_str_address;
@@ -30,6 +31,7 @@ struct Config {
 	
 	fuzzy: bool,
 	fuzzy_loop: u32,
+	fuzzy_valid_msg: bool,
 	
 }
 
@@ -50,6 +52,7 @@ impl Config {
 			unit_test: false,
 			fuzzy: false,
 			fuzzy_loop: 1,
+			fuzzy_valid_msg: false,
 		}
 	}
 }
@@ -155,6 +158,7 @@ fn main() {
 			"--test-action" => { state = ArgState::TestAction; },
 			"--unit-test" => { cfg.unit_test = true },
 			"--fuzzy" => { cfg.fuzzy = true; cfg.unit_test = true },
+			"--fuzzy-valid" => { cfg.fuzzy_valid_msg = true },
 			"--fuzzy-loop" => { state = ArgState::FuzzyLoop },
 			
 			"--version" => { println!("SpringDVS Packet Forge v0.1"); return; }
@@ -233,18 +237,32 @@ fn main() {
 	   	println!("");
 	   	if cfg.fuzzy == false { break }
 	}
+	
+	if cfg.fuzzy == true {
+		println!("\n----\nCompleted {} Fuzzing(s)", cfg.fuzzy_loop);
+	}
 }
 
 #[allow(unused_variables)]
 fn forge_fuzzy_packet(cfg: &Config) -> Vec<u8> {
 	let mut rng = rand::thread_rng();
-	let sz = rng.gen::<usize>() % 2048;
+	let mut sz = rng.gen::<usize>() % 2048;
 	println!("Fuzzing: {} bytes", sz);
 	
+	if cfg.fuzzy_valid_msg && sz == 0 { 
+		sz = (rng.gen::<usize>() % 2048) + 1;
+	} 
 	
 	let mut v : Vec<u8> = Vec::new();
 	for i in 0 .. sz {
 		v.push(rng.gen::<u8>())
+	}
+	
+	if cfg.fuzzy_valid_msg ==  true {
+		
+		while u8_packet_type(v[0]) == None {
+			v[0] = rng.gen::<u8>()
+		} 
 	}
 	
 	println!("{:?}", v); 
