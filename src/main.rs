@@ -100,6 +100,7 @@ fn modify_node_service(arg: &str) -> DvspService {
 fn modify_test_action(arg: &str) -> UnitTestAction {
 	match arg {
 		"reset" => UnitTestAction::Reset,
+		"update-address" => UnitTestAction::UpdateAddress,
 		_ => UnitTestAction::Undefined,
 	}
 }
@@ -238,7 +239,7 @@ fn forge_packet(cfg: &Config) -> Vec<u8> {
 		},
 		
 		DvspMsgType::UnitTest => {
-			let f = FrameUnitTest::new(cfg.test_action);
+			let f = FrameUnitTest::new(cfg.test_action, &cfg.text_content);
 			f.serialise()
 		},
 		_ => { Vec::new() }
