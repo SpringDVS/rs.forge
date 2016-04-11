@@ -33,6 +33,8 @@ struct Config {
 	fuzzy_loop: u32,
 	fuzzy_valid_msg: bool,
 	
+	port: u32,
+	
 }
 
 impl Config {
@@ -53,6 +55,8 @@ impl Config {
 			fuzzy: false,
 			fuzzy_loop: 1,
 			fuzzy_valid_msg: false,
+			
+			port: 57000,
 		}
 	}
 }
@@ -119,7 +123,7 @@ fn modify_test_action(arg: &str) -> UnitTestAction {
 enum ArgState {
 	None, MsgType, TextContent, MsgTarget, 
 	NodeRegister, NodeType, NodeState, NodeService,
-	TestAction, FuzzyLoop,
+	TestAction, FuzzyLoop, Port
 }
 
 
@@ -162,7 +166,7 @@ fn main() {
 			"--fuzzy-loop" => { state = ArgState::FuzzyLoop },
 			
 			"--version" => { println!("SpringDVS Packet Forge v0.1"); return; }
-			
+			"--port" => { state = ArgState::Port }
 			_ => {
 				
 				match state {
@@ -182,6 +186,12 @@ fn main() {
 												}
 										
 							 				},
+					ArgState::Port => { cfg.port = match a.parse::<u32>() {
+													Ok(n) => n,
+													_ => 0
+												}
+										
+							 				},
 					_ => { }
 				};
 				
@@ -191,6 +201,11 @@ fn main() {
 		
 	}
 	
+	let mut rng = rand::thread_rng();
+	let address : String =  match cfg.port { 
+		0 => format!("0.0.0.0:{}", (58000 + rng.gen::<usize>() % 1000)),
+		_ =>  format!("0.0.0.0:{}", cfg.port),
+	};
 
 	for _ in 0 .. cfg.fuzzy_loop {
 		
@@ -208,8 +223,8 @@ fn main() {
 		
 		
 		
-		
-		let socket = match UdpSocket::bind("0.0.0.0:55045") {
+		let addr_str : &str = address.as_ref();
+		let socket = match UdpSocket::bind(addr_str) {
 			Ok(s) => s,
 			Err(e) => {
 				println!("!! Error on bind: {}",e);
