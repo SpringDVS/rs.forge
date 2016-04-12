@@ -201,9 +201,9 @@ fn main() {
 		
 	}
 	
-	let mut rng = rand::thread_rng();
+
 	let address : String =  match cfg.port { 
-		0 => format!("0.0.0.0:{}", (58000 + rng.gen::<usize>() % 1000)),
+		0 => format!("0.0.0.0:0"),
 		_ =>  format!("0.0.0.0:{}", cfg.port),
 	};
 
