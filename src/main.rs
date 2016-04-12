@@ -8,7 +8,7 @@ use rand::Rng;
 use spring_dvs::enums::*;
 use spring_dvs::serialise::*;
 use spring_dvs::protocol::{u8_packet_type};
-use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest, FrameTypeRequest, FrameUnitTest};
+use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest, FrameTypeRequest, FrameResolution, FrameUnitTest};
 use spring_dvs::protocol::{FrameResponse, FrameNodeInfo, FrameNodeStatus, FrameNetwork};
 use spring_dvs::formats::ipv4_to_str_address;
 
@@ -68,7 +68,7 @@ fn modify_msg_type(arg: &str ) -> DvspMsgType {
 		"gsn_response" => DvspMsgType::GsnResponse,
 		"gsn_state_update" => DvspMsgType::GsnState,
 		"gsn_node_status" => DvspMsgType::GsnNodeStatus,
-
+		"gsn_resolution" => DvspMsgType::GsnResolution,
 		"gsn_type_request" => DvspMsgType::GsnTypeRequest,
 		
 		"gsn_area" => DvspMsgType::GsnArea,
@@ -291,6 +291,10 @@ fn forge_packet(cfg: &Config) -> Vec<u8> {
 			f.serialise()
 		},
 		
+		DvspMsgType::GsnResolution => {
+			let f = FrameResolution::new(&cfg.text_content);
+			f.serialise()
+		},
 		DvspMsgType::GsnState => {
 			let f = FrameStateUpdate::new(cfg.node_state, &cfg.text_content);
 			f.serialise()
