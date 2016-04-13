@@ -8,7 +8,7 @@ use rand::Rng;
 use spring_dvs::enums::*;
 use spring_dvs::serialise::*;
 use spring_dvs::protocol::{u8_packet_type};
-use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest, FrameTypeRequest, FrameResolution, FrameUnitTest};
+use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest, FrameTypeRequest, FrameResolution, FrameRegisterGtn, FrameUnitTest};
 use spring_dvs::protocol::{FrameResponse, FrameNodeInfo, FrameNodeStatus, FrameNetwork};
 use spring_dvs::formats::ipv4_to_str_address;
 
@@ -74,6 +74,8 @@ fn modify_msg_type(arg: &str ) -> DvspMsgType {
 		"gsn_area" => DvspMsgType::GsnArea,
 
 		"gsn_node_info" => DvspMsgType::GsnNodeInfo,
+		
+		"gtn_registration" => DvspMsgType::GtnRegistration,
 		
 		"gsn_unit_test" => DvspMsgType::UnitTest,
 		_ => DvspMsgType::Undefined
@@ -317,6 +319,11 @@ fn forge_packet(cfg: &Config) -> Vec<u8> {
 		
 		DvspMsgType::UnitTest => {
 			let f = FrameUnitTest::new(cfg.test_action, &cfg.text_content);
+			f.serialise()
+		},
+		
+		DvspMsgType::GtnRegistration => {
+			let f = FrameRegisterGtn::new(cfg.node_register, cfg.node_service, cfg.text_content.clone());
 			f.serialise()
 		},
 		_ => { Vec::new() }
