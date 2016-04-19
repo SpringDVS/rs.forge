@@ -1,19 +1,21 @@
 extern crate spring_dvs;
 extern crate rand;
 
-use std::io::{Write};
+
 
 use rand::Rng;
 
 use spring_dvs::enums::*;
 use spring_dvs::serialise::*;
-use spring_dvs::protocol::{u8_packet_type};
-use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest, FrameTypeRequest, FrameResolution, FrameRegisterGtn, FrameUnitTest};
+use spring_dvs::protocol::{u8_packet_type, Ipv4};
+use spring_dvs::protocol::{Packet, FrameRegister, FrameStateUpdate, FrameNodeRequest, FrameTypeRequest, FrameResolution, FrameRegisterGtn, FrameGeosub, FrameUnitTest};
 use spring_dvs::protocol::{FrameResponse, FrameNodeInfo, FrameNodeStatus, FrameNetwork};
+use spring_dvs::protocol::{HttpWrapper};
 use spring_dvs::formats::ipv4_to_str_address;
 
 use std::env;
-use std::net::UdpSocket;
+use std::io::prelude::*;
+use std::net::{TcpStream, UdpSocket};
 
 struct Config {
 	msg_type: DvspMsgType,
@@ -34,6 +36,10 @@ struct Config {
 	fuzzy_valid_msg: bool,
 	
 	port: u32,
+	
+	http: bool,
+	http_host: String,
+	http_res: String,
 	
 }
 
@@ -57,6 +63,11 @@ impl Config {
 			fuzzy_valid_msg: false,
 			
 			port: 57000,
+			
+			http: false,
+			http_host: String::new(),
+			http_res: String::new(),
+			
 		}
 	}
 }
@@ -76,6 +87,7 @@ fn modify_msg_type(arg: &str ) -> DvspMsgType {
 		"gsn_node_info" => DvspMsgType::GsnNodeInfo,
 		
 		"gtn_registration" => DvspMsgType::GtnRegistration,
+		"gtn_geosub_nodes" => DvspMsgType::GtnGeosubNodes,
 		
 		"gsn_unit_test" => DvspMsgType::UnitTest,
 		_ => DvspMsgType::Undefined
@@ -118,6 +130,7 @@ fn modify_test_action(arg: &str) -> UnitTestAction {
 	match arg {
 		"reset" => UnitTestAction::Reset,
 		"update-address" => UnitTestAction::UpdateAddress,
+		"add-gsn-root" => UnitTestAction::AddGeosubRoot,
 		_ => UnitTestAction::Undefined,
 	}
 }
@@ -125,7 +138,7 @@ fn modify_test_action(arg: &str) -> UnitTestAction {
 enum ArgState {
 	None, MsgType, TextContent, MsgTarget, 
 	NodeRegister, NodeType, NodeState, NodeService,
-	TestAction, FuzzyLoop, Port
+	TestAction, FuzzyLoop, Port, Http,
 }
 
 
@@ -169,6 +182,9 @@ fn main() {
 			
 			"--version" => { println!("SpringDVS Packet Forge v0.1"); return; }
 			"--port" => { state = ArgState::Port }
+			
+			"--http" => { cfg.http = true; state = ArgState::Http; },
+
 			_ => {
 				
 				match state {
@@ -194,6 +210,15 @@ fn main() {
 												}
 										
 							 				},
+					ArgState::Http => {
+						let (h, r) =	match a.find('/') {
+							None => (a.as_ref(), ""),
+							Some(p) => a.split_at(p)
+						} ;
+						
+						cfg.http_host = String::from(h);
+						cfg.http_res = String::from(&r[1..]);
+					},
 					_ => { }
 				};
 				
@@ -226,31 +251,17 @@ fn main() {
 		
 		
 		let addr_str : &str = address.as_ref();
-		let socket = match UdpSocket::bind(addr_str) {
-			Ok(s) => s,
-			Err(e) => {
-				println!("!! Error on bind: {}",e);
-				return;
-			}
-		};
-		
-		let m : &str = cfg.msg_target.as_ref();
-		
-	    match socket.send_to(bytes.as_ref(), m) {
-	    	Ok(_) => { },
-	    	_ => println!("!! Failed")
-	    };
-	    
-	    let mut bytes = [0;768];
-	   	let (sz, _) = match socket.recv_from(&mut bytes) {
-			Ok(s) => s,
-			_ => { 
-				println!("!! Failed to recv response");
-				return; 
+		match cfg.http {
+			false => {
+				 if dvsp_request(&bytes, addr_str, &cfg).is_err() { return }
 			},
-		};
-	   	
-	   	decode_packet(&bytes[..sz], &cfg);
+			
+			true => {
+				http_request(&bytes, &cfg);
+			}
+		}
+		
+
 	   	println!("");
 	   	if cfg.fuzzy == false { break }
 	}
@@ -324,6 +335,11 @@ fn forge_packet(cfg: &Config) -> Vec<u8> {
 		
 		DvspMsgType::GtnRegistration => {
 			let f = FrameRegisterGtn::new(cfg.node_register, cfg.node_service, cfg.text_content.clone());
+			f.serialise()
+		},
+		
+		DvspMsgType::GtnGeosubNodes => {
+			let f = FrameGeosub::new(&cfg.text_content);
 			f.serialise()
 		},
 		_ => { Vec::new() }
@@ -505,4 +521,64 @@ fn decode_frame_network(frame: &FrameNetwork, cfg: &Config) {
 		println!("%% Response|FrameNetwork:{}", nodelist);
 	}
 
+}
+
+fn http_request(bytes: &Vec<u8>, cfg: &Config) -> Result<Success,Failure> {
+
+	let serial = HttpWrapper::serialise_bytes_request(bytes, &cfg.http_host, &cfg.http_res);
+	println!("HTTP To: {} / {}", cfg.http_host, cfg.http_res);
+	
+	let mut stream = match TcpStream::connect(cfg.msg_target.as_str()) {
+		Ok(s) => s,
+		Err(_) => return Err(Failure::InvalidArgument)
+	};
+	
+	stream.write(bytes.as_slice());
+	let mut buf = [0;4096];
+	let size = match stream.read(&mut buf) {
+				Ok(s) => s,
+				Err(_) => 0
+	};
+	
+	if size == 0 { return Err(Failure::InvalidArgument) }
+	
+	let p = match HttpWrapper::deserialise_response(Vec::from(&buf[0..size])) {
+		Ok(p) => p,
+		Err(_) => return Err(Failure::InvalidConversion)
+	};
+	
+	decode_packet(p.serialise().as_slice(), &cfg);
+	Ok(Success::Ok)
+
+}
+
+fn dvsp_request(bytes: &Vec<u8>, address: &str, cfg: &Config) -> Result<Success,Failure> {
+	let socket = match UdpSocket::bind(address) {
+		Ok(s) => s,
+		Err(e) => {
+			println!("!! Error on bind: {}",e);
+			return Err(Failure::InvalidFormat);
+		}
+	};
+	
+	let m : &str = cfg.msg_target.as_ref();
+	
+    match socket.send_to(bytes.as_ref(), m) {
+    	Ok(_) => { },
+    	_ => println!("!! Failed")
+    };
+    
+    let mut bytes = [0;768];
+
+   	let (sz, _) = match socket.recv_from(&mut bytes) {
+		Ok(s) => s,
+		_ => { 
+			println!("!! Failed to recv response");
+			return Err(Failure::InvalidFormat); 
+		},
+	};
+   	
+   	decode_packet(&bytes[..sz], &cfg);
+   	
+   	Ok(Success::Ok)
 }
