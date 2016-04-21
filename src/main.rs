@@ -274,12 +274,19 @@ fn main() {
 #[allow(unused_variables)]
 fn forge_fuzzy_packet(cfg: &Config) -> Vec<u8> {
 	let mut rng = rand::thread_rng();
-	let mut sz = rng.gen::<usize>() % 2048;
+	
+	let mut sz = match cfg.http {
+		true => rng.gen::<usize>() % 5000,
+		false => rng.gen::<usize>() % 2048
+	};
 	println!("Fuzzing: {} bytes", sz);
 	
 	if cfg.fuzzy_valid_msg && sz == 0 { 
-		sz = (rng.gen::<usize>() % 2048) + 1;
-	} 
+		sz = match cfg.http {
+			true => (rng.gen::<usize>() % 5000)+1,
+			false => (rng.gen::<usize>() % 2048)+1
+		};
+	}
 	
 	let mut v : Vec<u8> = Vec::new();
 	for i in 0 .. sz {
