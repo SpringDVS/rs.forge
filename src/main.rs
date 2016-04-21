@@ -525,9 +525,7 @@ fn decode_frame_network(frame: &FrameNetwork, cfg: &Config) {
 
 fn http_request(bytes: &Vec<u8>, cfg: &Config) -> Result<Success,Failure> {
 
-	let serial = HttpWrapper::serialise_bytes_request(bytes, &cfg.http_host, &cfg.http_res);
-	println!("REQUEST:\n{}", String::from_utf8(serial.clone()).unwrap());
-	
+	let serial = HttpWrapper::serialise_bytes_request(bytes, &cfg.http_host, &cfg.http_res);	
 	
 	let mut stream = match TcpStream::connect(cfg.msg_target.as_str()) {
 		Ok(s) => s,
