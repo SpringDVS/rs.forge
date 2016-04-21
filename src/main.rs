@@ -526,14 +526,15 @@ fn decode_frame_network(frame: &FrameNetwork, cfg: &Config) {
 fn http_request(bytes: &Vec<u8>, cfg: &Config) -> Result<Success,Failure> {
 
 	let serial = HttpWrapper::serialise_bytes_request(bytes, &cfg.http_host, &cfg.http_res);
-	println!("HTTP To: {} / {}", cfg.http_host, cfg.http_res);
+	println!("REQUEST:\n{}", String::from_utf8(serial.clone()).unwrap());
+	
 	
 	let mut stream = match TcpStream::connect(cfg.msg_target.as_str()) {
 		Ok(s) => s,
 		Err(_) => return Err(Failure::InvalidArgument)
 	};
 	
-	stream.write(bytes.as_slice());
+	stream.write(serial.as_slice());
 	let mut buf = [0;4096];
 	let size = match stream.read(&mut buf) {
 				Ok(s) => s,
@@ -542,12 +543,12 @@ fn http_request(bytes: &Vec<u8>, cfg: &Config) -> Result<Success,Failure> {
 	
 	if size == 0 { return Err(Failure::InvalidArgument) }
 	
-	let p = match HttpWrapper::deserialise_response(Vec::from(&buf[0..size])) {
+	let bytes = match HttpWrapper::deserialise_response(Vec::from(&buf[0..size])) {
 		Ok(p) => p,
 		Err(_) => return Err(Failure::InvalidConversion)
 	};
 	
-	decode_packet(p.serialise().as_slice(), &cfg);
+	decode_packet(bytes.as_slice(), &cfg);
 	Ok(Success::Ok)
 
 }
