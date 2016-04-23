@@ -40,6 +40,7 @@ struct Config {
 	http: bool,
 	http_host: String,
 	http_res: String,
+	http_verbose: bool,
 	
 }
 
@@ -67,6 +68,7 @@ impl Config {
 			http: false,
 			http_host: String::new(),
 			http_res: String::new(),
+			http_verbose: false,
 			
 		}
 	}
@@ -184,6 +186,7 @@ fn main() {
 			"--port" => { state = ArgState::Port }
 			
 			"--http" => { cfg.http = true; state = ArgState::Http; },
+			"--http-verbose" => { cfg.http_verbose = true },
 
 			_ => {
 				
@@ -532,8 +535,14 @@ fn decode_frame_network(frame: &FrameNetwork, cfg: &Config) {
 
 fn http_request(bytes: &Vec<u8>, cfg: &Config) -> Result<Success,Failure> {
 
+
+
 	let serial = HttpWrapper::serialise_bytes_request(bytes, &cfg.http_host, &cfg.http_res);	
 	
+	if cfg.http_verbose == true {	
+		println!("Request:\n{}", String::from_utf8(serial.clone()).unwrap());
+	}
+
 	let mut stream = match TcpStream::connect(cfg.msg_target.as_str()) {
 		Ok(s) => s,
 		Err(_) => return Err(Failure::InvalidArgument)
@@ -545,14 +554,16 @@ fn http_request(bytes: &Vec<u8>, cfg: &Config) -> Result<Success,Failure> {
 				Ok(s) => s,
 				Err(_) => 0
 	};
-	
+
 	if size == 0 { return Err(Failure::InvalidArgument) }
-	
+	if cfg.http_verbose == true {
+		println!("Response:\n{}", String::from_utf8_lossy(&buf[..size]));
+	}
 	let bytes = match HttpWrapper::deserialise_response(Vec::from(&buf[0..size])) {
 		Ok(p) => p,
 		Err(_) => return Err(Failure::InvalidConversion)
 	};
-	
+
 	decode_packet(bytes.as_slice(), &cfg);
 	Ok(Success::Ok)
 
