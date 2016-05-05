@@ -4,6 +4,8 @@ extern crate rand;
 
 
 use rand::Rng;
+use std::hash::{Hash,Hasher,SipHasher};
+use std::mem::transmute;
 
 use spring_dvs::enums::*;
 use spring_dvs::serialise::*;
@@ -25,6 +27,7 @@ struct Config {
 	node_type: DvspNodeType,
 	node_state: DvspNodeState,
 	node_service: DvspService,
+	node_token: String,
 	
 	text_content: String,
 	
@@ -42,6 +45,8 @@ struct Config {
 	http_res: String,
 	http_verbose: bool,
 	
+	tcp: bool,
+	
 }
 
 impl Config {
@@ -54,6 +59,7 @@ impl Config {
 			node_type: DvspNodeType::Org,
 			node_state: DvspNodeState::Enabled,
 			node_service: DvspService::Dvsp,
+			node_token: String::new(),
 			
 			text_content: String::new(),
 			
@@ -70,6 +76,8 @@ impl Config {
 			http_res: String::new(),
 			http_verbose: false,
 			
+			tcp: false,
+			
 		}
 	}
 }
@@ -83,6 +91,7 @@ fn modify_msg_type(arg: &str ) -> DvspMsgType {
 		"gsn_node_status" => DvspMsgType::GsnNodeStatus,
 		"gsn_resolution" => DvspMsgType::GsnResolution,
 		"gsn_type_request" => DvspMsgType::GsnTypeRequest,
+		"gsn_request" => DvspMsgType::GsnRequest,
 		
 		"gsn_area" => DvspMsgType::GsnArea,
 
@@ -139,7 +148,7 @@ fn modify_test_action(arg: &str) -> UnitTestAction {
 
 enum ArgState {
 	None, MsgType, TextContent, MsgTarget, 
-	NodeRegister, NodeType, NodeState, NodeService,
+	NodeRegister, NodeType, NodeState, NodeService, NodeToken,
 	TestAction, FuzzyLoop, Port, Http,
 }
 
@@ -173,6 +182,7 @@ fn main() {
 			"--node-register" => { state = ArgState::NodeRegister; },
 			"--node-service" => { state = ArgState::NodeService; },
 			"--node-state" => { state = ArgState::NodeState; },
+			"--node-token" => { state = ArgState::NodeToken; },
 			
 			"--text-content" => { state = ArgState::TextContent; },
 			
@@ -186,6 +196,7 @@ fn main() {
 			"--port" => { state = ArgState::Port }
 			
 			"--http" => { cfg.http = true; state = ArgState::Http; },
+			"--tcp" => { cfg.tcp = true },
 			"--http-verbose" => { cfg.http_verbose = true },
 
 			_ => {
@@ -199,6 +210,7 @@ fn main() {
 					ArgState::NodeService => { cfg.node_service = modify_node_service(a.as_ref()); },
 					ArgState::NodeType => { cfg.node_type = modify_node_type(a.as_ref()); },
 					ArgState::NodeState => { cfg.node_state = modify_node_state(a.as_ref()); },
+					ArgState::NodeToken => { cfg.node_token = a; },
 					
 					ArgState::TestAction => { cfg.test_action = modify_test_action(a.as_ref()); },
 					ArgState::FuzzyLoop => { cfg.fuzzy_loop = match a.parse::<u32>() {
@@ -254,14 +266,11 @@ fn main() {
 		
 		
 		let addr_str : &str = address.as_ref();
-		match cfg.http {
-			false => {
-				 if dvsp_request(&bytes, addr_str, &cfg).is_err() { return }
-			},
-			
-			true => {
-				http_request(&bytes, &cfg);
-			}
+		
+		if cfg.tcp == true || cfg.http == true {
+			tcp_request(&bytes, &cfg);
+		} else {
+			 if dvsp_request(&bytes, addr_str, &cfg).is_err() { return }
 		}
 		
 
@@ -276,6 +285,7 @@ fn main() {
 
 #[allow(unused_variables)]
 fn forge_fuzzy_packet(cfg: &Config) -> Vec<u8> {
+	println!("Fuzzing....");
 	let mut rng = rand::thread_rng();
 	
 	let mut sz = match cfg.http {
@@ -310,7 +320,9 @@ fn forge_fuzzy_packet(cfg: &Config) -> Vec<u8> {
 fn forge_packet(cfg: &Config) -> Vec<u8> {
 	let bytes = match cfg.msg_type {
 		DvspMsgType::GsnRegistration => {
-			let f = FrameRegister::new(cfg.node_register, cfg.node_type as u8, cfg.node_service, cfg.text_content.clone());
+			let mut v : [u8;32] = [0;32];
+			if cfg.node_token.len() == 32 { v.clone_from_slice(cfg.node_token.as_bytes()); }
+			let f = FrameRegister::new(cfg.node_register, cfg.node_type as u8, cfg.node_service, cfg.text_content.clone(), v);
 			f.serialise()
 		},
 		
@@ -351,6 +363,10 @@ fn forge_packet(cfg: &Config) -> Vec<u8> {
 		DvspMsgType::GtnGeosubNodes => {
 			let f = FrameGeosub::new(&cfg.text_content);
 			f.serialise()
+		},
+		DvspMsgType::GsnRequest => {
+			Vec::from(cfg.text_content.as_bytes())
+			
 		},
 		_ => { Vec::new() }
 	};
@@ -434,6 +450,17 @@ fn decode_packet(bytes: &[u8], cfg: &Config) {
 				Ok(frame) => decode_frame_network(&frame, &cfg),
 				Err(f) => {
 					println!("!! deserialise|FrameNetwork:{:?}", f);
+					return;
+				} 
+			}
+		},
+		
+		DvspMsgType::GsnResponseHigh => {
+
+			match String::from_utf8(p.content_raw().clone()) {
+				Ok(s) => decode_frame_higher_response(&s, &cfg),
+				Err(f) => {
+					println!("!! deserialise|FrameHigherResponse:{:?}", f);
 					return;
 				} 
 			}
@@ -533,11 +560,24 @@ fn decode_frame_network(frame: &FrameNetwork, cfg: &Config) {
 
 }
 
-fn http_request(bytes: &Vec<u8>, cfg: &Config) -> Result<Success,Failure> {
+fn decode_frame_higher_response(response: &str, cfg: &Config) {
+	if !cfg.unit_test {
+		println!("FrameHigherResponse.payload:\n{}", response);
+		
+	} else {
+		println!("%% Response|FrameHigherResponse:{}", response);
+	}
+}
+
+fn tcp_request(bytes: &Vec<u8>, cfg: &Config) -> Result<Success,Failure> {
 
 
 
-	let serial = HttpWrapper::serialise_bytes_request(bytes, &cfg.http_host, &cfg.http_res);	
+
+	let serial = match cfg.http {
+		 true => HttpWrapper::serialise_bytes_request(bytes, &cfg.http_host, &cfg.http_res),
+		 false => bytes.clone(), 
+	};
 	
 	if cfg.http_verbose == true {	
 		println!("Request:\n{}", String::from_utf8(serial.clone()).unwrap());
@@ -559,15 +599,19 @@ fn http_request(bytes: &Vec<u8>, cfg: &Config) -> Result<Success,Failure> {
 	if cfg.http_verbose == true {
 		println!("Response:\n{}", String::from_utf8_lossy(&buf[..size]));
 	}
-	let bytes = match HttpWrapper::deserialise_response(Vec::from(&buf[0..size])) {
-		Ok(p) => p,
-		Err(_) => return Err(Failure::InvalidConversion)
-	};
+	let bytes = match cfg.http { 
+			true => match HttpWrapper::deserialise_response(Vec::from(&buf[0..size])) {
+					Ok(p) => p,
+					Err(_) => return Err(Failure::InvalidConversion)
+				},
+			false => Vec::from(&buf[0..size]), 
+		};
 
 	decode_packet(bytes.as_slice(), &cfg);
 	Ok(Success::Ok)
 
 }
+
 
 fn dvsp_request(bytes: &Vec<u8>, address: &str, cfg: &Config) -> Result<Success,Failure> {
 	let socket = match UdpSocket::bind(address) {
